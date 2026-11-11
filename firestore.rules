@@ -1,0 +1,98 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAuthed() {
+      return request.auth != null;
+    }
+
+    // Registered user: has completed name selection (users/{uid} exists)
+    function isRegisteredUser() {
+      return isAuthed()
+          && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    // Active gateway phone UID recorded in gateway/status
+    function isGatewayPhone() {
+      return isAuthed()
+          && exists(/databases/$(database)/documents/gateway/status)
+          && get(/databases/$(database)/documents/gateway/status).data.uid == request.auth.uid;
+    }
+
+    // users/{uid}: phone numbers readable only by authenticated, registered users
+    // (each user can always read/write their own doc during initial setup)
+    match /users/{uid} {
+      allow read: if isAuthed() && (request.auth.uid == uid || isRegisteredUser());
+      allow create, update: if isAuthed() && (
+        (request.auth.uid == uid
+         && request.resource.data.name is string
+         && request.resource.data.name.size() > 0)
+        ||
+        (isRegisteredUser()
+         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['phone', 'updatedAt'])
+         && request.resource.data.phone is string)
+      );
+    }
+
+    // settings/main, settings/escalation, settings/telegram
+    match /settings/{docId} {
+      allow read, write: if isAuthed() && docId in ['main', 'escalation', 'telegram'];
+    }
+
+    match /batches/{batchId} {
+      allow read: if isAuthed();
+      allow create: if isAuthed()
+                    && request.resource.data.status == 'active'
+                    && request.resource.data.eggCount is int
+                    && request.resource.data.eggCount > 0
+                    && request.resource.data.placedDate is string;
+      allow update: if isAuthed()
+                    && request.resource.data.status in ['active', 'ended']
+                    && !('placedDate' in request.resource.data.diff(resource.data).affectedKeys());
+      allow delete: if false;
+    }
+
+    match /rotations/{docId} {
+      allow read: if isAuthed();
+      allow create: if isAuthed()
+                    && !exists(/databases/$(database)/documents/rotations/$(docId))
+                    && request.resource.data.doneBy is string
+                    && request.resource.data.doneByUid is string
+                    && request.resource.data.slot in ['morning', 'noon', 'evening']
+                    && request.resource.data.date is string;
+      allow update: if false;
+      allow delete: if isAuthed();
+    }
+
+    // Phase 2: escalations/{date_slot} — Cloud Functions Admin SDK writes only
+    match /escalations/{docId} {
+      allow read: if isRegisteredUser();
+      allow write: if false;
+    }
+
+    // Phase 2: commands/{cmdId} — Cloud Functions create/cancel; ONLY gateway UID may claim/update status
+    match /commands/{cmdId} {
+      allow read: if isRegisteredUser();
+      allow create, delete: if false;
+      allow update: if isGatewayPhone()
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                       .hasOnly(['status', 'reason', 'claimedBy', 'claimedAt', 'completedAt'])
+                    && request.resource.data.status in ['claimed', 'done', 'failed', 'cancelled'];
+    }
+
+    // Phase 2: gateway/status — readable by family; writable only by the gateway device claiming its own uid
+    match /gateway/status {
+      allow read: if isAuthed();
+      allow write: if isAuthed()
+                   && request.resource.data.uid == request.auth.uid;
+    }
+
+    // Phase 2: auditLogs/{logId} — readable by family; gateway may log call/sms execution outcomes
+    match /auditLogs/{logId} {
+      allow read: if isRegisteredUser();
+      allow create: if isGatewayPhone()
+                    && request.resource.data.channel in ['call', 'sms', 'system'];
+      allow update, delete: if false;
+    }
+  }
+}

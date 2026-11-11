@@ -1,0 +1,82 @@
+{
+  "@@locale": "ml",
+  "appName": "ഹാച്ചർ",
+  "languageMalayalam": "മലയാളം",
+  "languageEnglish": "English",
+  "pickYourName": "നിങ്ങളുടെ പേര് തിരഞ്ഞെടുക്കൂ",
+  "homeTitle": "ഇൻക്യുബേറ്റർ",
+  "dayBanner": "ദിവസം {day} / 21",
+  "@dayBanner": {
+    "placeholders": { "day": { "type": "int" } }
+  },
+  "hatchDate": "വിരിയൽ: {date}",
+  "@hatchDate": {
+    "placeholders": { "date": { "type": "String" } }
+  },
+  "slotMorning": "രാവിലെ",
+  "slotNoon": "ഉച്ചക്ക്",
+  "slotEvening": "വൈകുന്നേരം",
+  "slotSymbolMorning": "|",
+  "slotSymbolNoon": "∆",
+  "slotSymbolEvening": "•",
+  "statusPending": "കാത്തിരിക്കുന്നു",
+  "statusLate": "വൈകി",
+  "statusMissed": "നഷ്ടമായി",
+  "statusDoneBy": "{name}, {time}",
+  "@statusDoneBy": {
+    "placeholders": {
+      "name": { "type": "String" },
+      "time": { "type": "String" }
+    }
+  },
+  "btnRotated": "തിരിച്ചു ✔",
+  "btnSnooze": "10 മിനിറ്റ് നീക്കിവെക്കൂ",
+  "newBatch": "പുതിയ ബാച്ച്",
+  "eggCount": "മുട്ടകളുടെ എണ്ണം",
+  "placedDate": "ഇട്ട തീയതി",
+  "endBatch": "ബാച്ച് അവസാനിപ്പിക്കൂ",
+  "endBatchConfirm": "ഈ ബാച്ച് അവസാനിപ്പിക്കണോ?",
+  "history": "ചരിത്രം",
+  "settings": "ക്രമീകരണം",
+  "language": "ഭാഷ",
+  "slotTimes": "അലാറം സമയങ്ങൾ",
+  "stopFromDay": "ഏത് ദിവസം മുതൽ അലാറം നിർത്തണം",
+  "stopFromDayOff": "ഒരിക്കലും നിർത്തരുത്",
+  "snoozeMinutes": "സ്നൂസ് (മിനിറ്റ്)",
+  "repeatMinutes": "ആവർത്തനം (മിനിറ്റ്)",
+  "setupChecklist": "സജ്ജീകരണ ചെക്ക്ലിസ്റ്റ്",
+  "lockdownBanner": "ഇന്ന് മുതൽ തിരിക്കേണ്ട",
+  "lockdownLogAnyway": "ഇനിയും ലോഗ് ചെയ്യണോ?",
+  "yes": "അതെ",
+  "no": "വേണ്ട",
+  "undo": "മാറ്റം",
+  "undoConfirm": "ഈ ഇൻപുട്ട് നീക്കം ചെയ്യണോ?",
+  "confirmOk": "ശരി",
+  "cancel": "റദ്ദ്",
+  "noBatchActive": "ഒരു ബാച്ചും സജീവമല്ല",
+  "startNewBatch": "പുതിയ ബാച്ച് ആരംഭിക്കൂ",
+  "alarmText": "മുട്ട തിരിക്കാൻ സമയമായി – ഇപ്പോൾ {symbol} വെക്കണം",
+  "@alarmText": {
+    "placeholders": { "symbol": { "type": "String" } }
+  },
+  "candlingReminder": "ദിവസം {day}: ക്യാൻഡ്ലിംഗ് ചെയ്യൂ",
+  "@candlingReminder": {
+    "placeholders": { "day": { "type": "int" } }
+  },
+  "hatchNotification": "ഇന്ന് മുട്ടകൾ വിരിയും! 🐣",
+  "permWarningTitle": "ആവശ്യമായ അനുമതികൾ കാണ്ടില്ല",
+  "checklistNotifications": "അറിയിപ്പ് അനുവദിക്കൽ",
+  "checklistExactAlarm": "കൃത്യസമയ അലാറം",
+  "checklistFullscreen": "ഫുൾ-സ്ക്രീൻ ഇൻ്റൻ്റ്",
+  "checklistDnd": "ഡോ നോട്ട് ഡിസ്റ്റർബ് ആക്സസ്",
+  "checklistBattery": "ബാറ്ററി ഒപ്റ്റിമൈസേഷൻ ഒഴിവാക്കൽ",
+  "checklistAutostart": "ഓട്ടോ-സ്റ്റാർട്ട് (Xiaomi/Oppo/Vivo)",
+  "openSettings": "ക്രമീകരണം തുറക്കൂ",
+  "done": "പൂർത്തിയായി",
+  "filterByBatch": "ബാച്ചാൽ ഫിൽട്ടർ ചെയ്യൂ",
+  "allBatches": "എല്ലാ ബാച്ചുകളും",
+  "humidity": "ദിവസം {day} മുതൽ ആർദ്രത കൂട്ടൂ 💧",
+  "@humidity": {
+    "placeholders": { "day": { "type": "int" } }
+  }
+}

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  file_paths.xml — FileProvider path configuration for Hatcher.
+
+  Referenced from AndroidManifest.xml via:
+    android:resource="@xml/file_paths"
+
+  Grants FileProvider URIs for:
+  • files-path  — context.filesDir  (internal app files, e.g. exported logs)
+  • cache-path  — context.cacheDir  (temporary files, e.g. log snapshots)
+
+  The '.' path means the entire directory is exposed.
+  Narrow the path to a subdirectory (e.g. "exports/") if stricter scoping
+  is needed in a future release.
+-->
+<paths>
+    <files-path name="files" path="." />
+    <cache-path name="cache" path="." />
+</paths>

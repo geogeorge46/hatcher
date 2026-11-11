@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Simple clean egg silhouette icon for Hatcher -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,24 C40,24 30,44 30,62 C30,78 40,86 54,86 C68,86 78,78 78,62 C78,44 68,24 54,24 Z" />
+    <path
+        android:fillColor="#F9A825"
+        android:pathData="M54,32 C46,32 39,46 39,60 C39,71 45,77 54,77 C63,77 69,71 69,60 C69,46 62,32 54,32 Z" />
+</vector>

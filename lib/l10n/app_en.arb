@@ -1,0 +1,82 @@
+{
+  "@@locale": "en",
+  "appName": "Hatcher",
+  "languageMalayalam": "മലയാളം",
+  "languageEnglish": "English",
+  "pickYourName": "Pick your name",
+  "homeTitle": "Incubator",
+  "dayBanner": "Day {day} / 21",
+  "@dayBanner": {
+    "placeholders": { "day": { "type": "int" } }
+  },
+  "hatchDate": "Hatch: {date}",
+  "@hatchDate": {
+    "placeholders": { "date": { "type": "String" } }
+  },
+  "slotMorning": "Morning",
+  "slotNoon": "Noon",
+  "slotEvening": "Evening",
+  "slotSymbolMorning": "|",
+  "slotSymbolNoon": "∆",
+  "slotSymbolEvening": "•",
+  "statusPending": "Pending",
+  "statusLate": "Late",
+  "statusMissed": "Missed",
+  "statusDoneBy": "{name}, {time}",
+  "@statusDoneBy": {
+    "placeholders": {
+      "name": { "type": "String" },
+      "time": { "type": "String" }
+    }
+  },
+  "btnRotated": "Rotated ✔",
+  "btnSnooze": "Snooze 10 min",
+  "newBatch": "New Batch",
+  "eggCount": "Egg count",
+  "placedDate": "Placed date",
+  "endBatch": "End Batch",
+  "endBatchConfirm": "End this batch?",
+  "history": "History",
+  "settings": "Settings",
+  "language": "Language",
+  "slotTimes": "Alarm times",
+  "stopFromDay": "Stop alarms from day",
+  "stopFromDayOff": "Never stop",
+  "snoozeMinutes": "Snooze (minutes)",
+  "repeatMinutes": "Repeat (minutes)",
+  "setupChecklist": "Setup Checklist",
+  "lockdownBanner": "No rotation needed from today",
+  "lockdownLogAnyway": "Log rotation anyway?",
+  "yes": "Yes",
+  "no": "No",
+  "undo": "Undo",
+  "undoConfirm": "Remove this rotation entry?",
+  "confirmOk": "OK",
+  "cancel": "Cancel",
+  "noBatchActive": "No active batch",
+  "startNewBatch": "Start a new batch",
+  "alarmText": "Time to rotate eggs – place {symbol} now",
+  "@alarmText": {
+    "placeholders": { "symbol": { "type": "String" } }
+  },
+  "candlingReminder": "Day {day}: Time to candle the eggs",
+  "@candlingReminder": {
+    "placeholders": { "day": { "type": "int" } }
+  },
+  "hatchNotification": "Eggs hatch today! 🐣",
+  "permWarningTitle": "Required permissions missing",
+  "checklistNotifications": "Post notifications",
+  "checklistExactAlarm": "Exact alarm",
+  "checklistFullscreen": "Full-screen intent",
+  "checklistDnd": "Do Not Disturb access",
+  "checklistBattery": "Battery unrestricted",
+  "checklistAutostart": "Auto-start (Xiaomi/Oppo/Vivo)",
+  "openSettings": "Open Settings",
+  "done": "Done",
+  "filterByBatch": "Filter by batch",
+  "allBatches": "All batches",
+  "humidity": "From day {day}: raise humidity 💧",
+  "@humidity": {
+    "placeholders": { "day": { "type": "int" } }
+  }
+}

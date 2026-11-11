@@ -1,0 +1,251 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  AndroidManifest.xml for Hatcher — Egg Incubation Reminder App
+  package: com.hatcher.app
+
+  Key design notes:
+  ─────────────────
+  • SCHEDULE_EXACT_ALARM  — required on Android 12+ for precise alarm delivery.
+  • USE_EXACT_ALARM        — required on Android 13+ as an alternative (granted
+                             automatically for alarm-clock category apps).
+  • FOREGROUND_SERVICE_ALARM — required on Android 14+ when foreground service
+                               type is "alarm". Must accompany FOREGROUND_SERVICE.
+  • REQUEST_IGNORE_BATTERY_OPTIMIZATIONS — lets us prompt the user to whitelist
+                               Hatcher so Doze mode does not suppress alarms.
+  • BootReceiver exported="true" — required for the system to send BOOT_COMPLETED
+                               and other system broadcasts to our receiver.
+  • AlarmReceiver / SnoozeReceiver / RotateActionReceiver exported="false" —
+                               these are only triggered by our own PendingIntents,
+                               never by external apps, so we lock them down.
+  • AlarmActivity showWhenLocked + turnScreenOn — wakes the screen even when the
+                               device is locked so the user sees the alarm UI.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- ═══════════════════════════════════════════════════════════════════════
+         PERMISSIONS
+         ═══════════════════════════════════════════════════════════════════════ -->
+
+    <!-- Android 13+: required to post any notification to the notification tray. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Android 12+: lets the app schedule exact alarms (user-granted at runtime). -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+
+    <!-- Android 13+: alternative exact-alarm permission; auto-granted for alarm apps. -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+
+    <!-- Required to show a full-screen intent (lock-screen alarm UI). -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+
+    <!-- Base permission for all foreground services. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+
+    <!-- Android 14+: foreground service type for playing alarm audio on STREAM_ALARM. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED" />
+
+    <!-- Keeps CPU running while AlarmService processes the alarm. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- Required to receive ACTION_BOOT_COMPLETED. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- Lets us bypass Do-Not-Disturb when sounding the alarm. -->
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+
+    <!-- Lets us prompt the user to exempt Hatcher from battery optimisation
+         so that Doze mode does not suppress exact alarms at night. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <!-- Vibration support for alarm alerts. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <!-- Firebase / Firestore network access. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Used to check connectivity before syncing Firestore. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- Phase 2 Gateway Mode: real phone calls, SMS, SIM slot reading & call hangup -->
+    <uses-permission android:name="android.permission.CALL_PHONE" />
+    <uses-permission android:name="android.permission.SEND_SMS" />
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+
+    <!-- ═══════════════════════════════════════════════════════════════════════
+         APPLICATION
+         ═══════════════════════════════════════════════════════════════════════ -->
+    <application
+        android:name="${applicationName}"
+        android:icon="@mipmap/ic_launcher"
+        android:label="Hatcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/LaunchTheme"
+        android:hardwareAccelerated="true"
+        android:allowBackup="false"
+        android:fullBackupContent="false">
+
+        <!-- ─────────────────────────────────────────────────────────────────
+             MainActivity — Flutter entry point
+             ───────────────────────────────────────────────────────────────── -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:theme="@style/LaunchTheme"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- ─────────────────────────────────────────────────────────────────
+             AlarmActivity — Full-screen alarm UI shown on lock screen.
+             showWhenLocked + turnScreenOn wake the screen so the user
+             sees the rotation prompt without unlocking.
+             excludeFromRecents keeps it out of the recent-apps list.
+             ───────────────────────────────────────────────────────────────── -->
+        <activity
+            android:name=".alarm.AlarmActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:theme="@style/AlarmTheme"
+            android:configChanges="orientation|screenSize">
+            <!-- Internal intent so AlarmService can start AlarmActivity directly. -->
+            <intent-filter>
+                <action android:name="com.hatcher.ALARM" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <!-- ─────────────────────────────────────────────────────────────────
+             AlarmReceiver — Receives PendingIntents fired by AlarmManager.
+             exported="false": only internal code can trigger it.
+             ───────────────────────────────────────────────────────────────── -->
+        <receiver
+            android:name=".alarm.AlarmReceiver"
+            android:exported="false" />
+
+        <!-- ─────────────────────────────────────────────────────────────────
+             SnoozeReceiver — Handles snooze button taps from the alarm
+             notification. exported="false": only internal PendingIntents.
+             ───────────────────────────────────────────────────────────────── -->
+        <receiver
+            android:name=".alarm.SnoozeReceiver"
+            android:exported="false" />
+
+        <!-- ─────────────────────────────────────────────────────────────────
+             RotateActionReceiver — Handles "Rotated ✔" taps from the alarm
+             notification action button. exported="false".
+             ───────────────────────────────────────────────────────────────── -->
+        <receiver
+            android:name=".notification.RotateActionReceiver"
+            android:exported="false" />
+
+        <!-- ─────────────────────────────────────────────────────────────────
+             BootReceiver — Reschedules alarms after device reboot, app
+             update, or time/timezone change.
+             exported="true" is REQUIRED for the system to deliver broadcast
+             intents; without it Android silently drops BOOT_COMPLETED on
+             API 26+ in the context of implicit broadcasts.
+             ───────────────────────────────────────────────────────────────── -->
+        <receiver
+            android:name=".boot.BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <!-- Device rebooted. All AlarmManager alarms were wiped. -->
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <!-- App was updated/reinstalled. Alarms wiped again. -->
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <!-- User manually changed the clock — existing alarm triggers may be wrong. -->
+                <action android:name="android.intent.action.TIME_SET" />
+                <!-- User switched timezone — slot times must be recalculated. -->
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- ─────────────────────────────────────────────────────────────────
+             AlarmService — Foreground service that sounds the alarm, shows
+             the full-screen notification, and starts AlarmActivity.
+             foregroundServiceType="alarm" is mandatory on Android 14+.
+             exported="false": started only by AlarmReceiver internally.
+             ───────────────────────────────────────────────────────────────── -->
+        <service
+            android:name=".alarm.AlarmService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+
+        <!-- Phase 2 Gateway Service (runs on Geo's phone when Gateway mode is ON) -->
+        <service
+            android:name=".gateway.GatewayService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Persistent SIM call and SMS command gateway for farm egg incubation alerts" />
+        </service>
+
+        <!-- Phase 2 FCM Service: receives cancel_slot and wake_gateway in background -->
+        <service
+            android:name=".fcm.HatcherFirebaseMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
+        <!-- Required by Flutter Embedding v2 -->
+        <meta-data
+            android:name="flutterEmbedding"
+            android:value="2" />
+
+        <!-- ─────────────────────────────────────────────────────────────────
+             FileProvider — required for sharing files (e.g., log exports).
+             ───────────────────────────────────────────────────────────────── -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
+    </application>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════
+         QUERIES — Declares intents we query so we can help the user enable
+         autostart on manufacturer ROMs (Xiaomi MIUI, Huawei EMUI, etc.).
+         Without this block, packageManager.queryIntentActivities() returns
+         empty on Android 11+ for these autostart settings screens.
+         ═══════════════════════════════════════════════════════════════════════ -->
+    <queries>
+        <!-- MIUI / Xiaomi autostart settings -->
+        <intent>
+            <action android:name="miui.intent.action.APP_PERM_EDITOR" />
+        </intent>
+        <!-- Huawei EMUI protected apps settings -->
+        <intent>
+            <action android:name="huawei.intent.action.HSM_PROTECTED_APPS" />
+        </intent>
+        <!-- Samsung autostart / device maintenance -->
+        <intent>
+            <action android:name="com.samsung.android.sm.ACTION_BATTERY_DETAIL" />
+        </intent>
+        <!-- OnePlus battery optimization settings -->
+        <intent>
+            <action android:name="com.oneplus.security.AUTOSTART_OPEN" />
+        </intent>
+    </queries>
+
+</manifest>
