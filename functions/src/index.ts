@@ -176,6 +176,8 @@ export const escalationTick = onSchedule(
       config,
       users,
       gateway,
+      mutedDate: (mainData.mutedDate ?? batchData.mutedDate ?? null) as string | null,
+      mutedUntilDate: (mainData.mutedUntilDate ?? mainData.mutedDate ?? batchData.mutedDate ?? null) as string | null,
     });
 
     const botToken = telegramBotToken.value();

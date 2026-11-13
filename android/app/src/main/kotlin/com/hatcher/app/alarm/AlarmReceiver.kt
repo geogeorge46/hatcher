@@ -136,12 +136,15 @@ class AlarmReceiver : BroadcastReceiver() {
             Log.e(TAG, "Failed to schedule next alarm", e)
         }
 
-        // Step 2: Fast local check — if already marked done in SharedPreferences,
-        // skip ringing entirely (saves battery, avoids annoying the user).
-        // Note: Firestore is NOT checked here because we're in a BroadcastReceiver
-        // with a very short time budget. The definitive Firestore check happens
-        // inside AlarmService on a coroutine.
+        // Step 2: Check if today is muted (e.g. owner in a function/event)
+        // or already marked done in SharedPreferences — skip ringing entirely.
         val prefs = context.getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
+        val mutedUntil = prefs.getString("muted_until_date", null) ?: prefs.getString("muted_date", null)
+        if (!mutedUntil.isNullOrBlank() && date <= mutedUntil) {
+            Log.i(TAG, "Date ($date) is muted until $mutedUntil — skipping alarm ring for $slotKey")
+            return
+        }
+
         val doneKey = "done_${date}_${slotKey}"
         if (prefs.getBoolean(doneKey, false)) {
             Log.i(TAG, "Slot already done locally — skipping alarm ring for $slotKey $date")

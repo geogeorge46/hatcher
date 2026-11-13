@@ -16,6 +16,7 @@
 // doneAt (server timestamp) with the current client time.  This is a
 // best-effort guard – the final arbiter is the Firestore Security Rule.
 
+import 'dart:async';
 import 'dart:developer' as dev;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -60,6 +61,123 @@ class FirestoreService {
       _db.collection('settings').doc('main');
 
   // ---------------------------------------------------------------------------
+  // Cache-first stream helpers
+  // ---------------------------------------------------------------------------
+
+  /// Streams [liveStream] while ensuring the UI never hangs indefinitely
+  /// waiting for an initial server snapshot on slow or stalled networks.
+  ///
+  /// 1. Reads from Firestore's local cache via [readCache] right away.
+  /// 2. If [hasData] holds for the cached value, emits it immediately before
+  ///    continuing with [liveStream].
+  /// 3. If cache is empty or missing, waits up to [gracePeriod] for
+  ///    [liveStream]; if [liveStream] has not emitted by then, emits
+  ///    [fallbackValue] so loading spinners clear while keeping [liveStream]
+  ///    subscribed for future server updates.
+  Stream<T> _watchWithCacheFallback<T>({
+    required Future<T?> Function() readCache,
+    required bool Function(T value) hasData,
+    required T fallbackValue,
+    required Stream<T> liveStream,
+    Duration gracePeriod = const Duration(seconds: 3),
+  }) {
+    late final StreamController<T> controller;
+    StreamSubscription<T>? subscription;
+    Timer? timer;
+    var emitted = false;
+    var cancelled = false;
+
+    void emitData(T value) {
+      if (cancelled || controller.isClosed) return;
+      emitted = true;
+      timer?.cancel();
+      controller.add(value);
+    }
+
+    controller = StreamController<T>(
+      onListen: () async {
+        subscription = liveStream.listen(
+          emitData,
+          onError: (Object error, StackTrace stack) {
+            if (cancelled || controller.isClosed) return;
+            timer?.cancel();
+            controller.addError(error, stack);
+          },
+          onDone: () {
+            timer?.cancel();
+            if (!controller.isClosed) {
+              controller.close();
+            }
+          },
+        );
+
+        try {
+          final cached = await readCache().timeout(const Duration(seconds: 2));
+          if (!cancelled && !emitted && cached != null && hasData(cached)) {
+            emitData(cached);
+            return;
+          }
+        } catch (e) {
+          dev.log('FirestoreService: cache read skipped ($e)',
+              name: 'FirestoreService');
+        }
+
+        if (!cancelled && !emitted) {
+          timer = Timer(gracePeriod, () {
+            if (!cancelled && !emitted) {
+              dev.log(
+                'FirestoreService: stream timed out after '
+                '${gracePeriod.inSeconds}s – using fallback',
+                name: 'FirestoreService',
+              );
+              emitData(fallbackValue);
+            }
+          });
+        }
+      },
+      onCancel: () async {
+        cancelled = true;
+        timer?.cancel();
+        await subscription?.cancel();
+      },
+    );
+
+    return controller.stream;
+  }
+
+  Stream<T> _watchQueryWithCacheFallback<T>({
+    required Query<Map<String, dynamic>> query,
+    required T Function(QuerySnapshot<Map<String, dynamic>> qs) mapQuery,
+    required bool Function(T value) hasData,
+    required T fallbackValue,
+  }) {
+    return _watchWithCacheFallback<T>(
+      readCache: () async =>
+          mapQuery(await query.get(const GetOptions(source: Source.cache))),
+      hasData: hasData,
+      fallbackValue: fallbackValue,
+      liveStream: query.snapshots().map(mapQuery),
+    );
+  }
+
+  Stream<T> _watchDocWithCacheFallback<T>({
+    required DocumentReference<Map<String, dynamic>> doc,
+    required T Function(DocumentSnapshot<Map<String, dynamic>> snap) mapDoc,
+    required T fallbackValue,
+  }) {
+    return _watchWithCacheFallback<T>(
+      readCache: () async {
+        final snap = await doc.get(const GetOptions(source: Source.cache));
+        if (!snap.exists || snap.data() == null) return null;
+        return mapDoc(snap);
+      },
+      hasData: (value) => value != null,
+      fallbackValue: fallbackValue,
+      liveStream: doc.snapshots().map(mapDoc),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
   // User management
   // ---------------------------------------------------------------------------
 
@@ -97,14 +215,18 @@ class FirestoreService {
   /// If the document does not exist yet (first launch), emits
   /// [SettingsModel.defaults()] so the app is always in a usable state.
   Stream<SettingsModel> watchSettings() {
-    return _settingsDoc.snapshots().map((snapshot) {
-      if (!snapshot.exists || snapshot.data() == null) {
-        dev.log('FirestoreService: settings doc missing – using defaults',
-            name: 'FirestoreService');
-        return SettingsModel.defaults();
-      }
-      return SettingsModel.fromFirestore(snapshot);
-    });
+    return _watchDocWithCacheFallback<SettingsModel>(
+      doc: _settingsDoc,
+      fallbackValue: SettingsModel.defaults(),
+      mapDoc: (snapshot) {
+        if (!snapshot.exists || snapshot.data() == null) {
+          dev.log('FirestoreService: settings doc missing – using defaults',
+              name: 'FirestoreService');
+          return SettingsModel.defaults();
+        }
+        return SettingsModel.fromFirestore(snapshot);
+      },
+    );
   }
 
   /// Writes [s] to `settings/main`, replacing the entire document.
@@ -112,8 +234,29 @@ class FirestoreService {
   /// Uses plain `set` (no merge) so stale fields removed in [SettingsModel]
   /// do not persist.
   Future<void> saveSettings(SettingsModel s) async {
-    await _settingsDoc.set(s.toMap());
+    await _settingsDoc.set(s.toMap(), SetOptions(merge: true));
     dev.log('FirestoreService: saveSettings written', name: 'FirestoreService');
+  }
+
+  /// Silences all alarms, notifications, and escalation calls up to and including [untilDate] ('yyyy-MM-dd').
+  Future<void> muteUntil(String untilDate) async {
+    await _settingsDoc.set({
+      'mutedUntilDate': untilDate,
+      'mutedDate': untilDate,
+    }, SetOptions(merge: true));
+    dev.log('FirestoreService: mutedUntilDate set to $untilDate', name: 'FirestoreService');
+  }
+
+  /// Silences all alarms, notifications, and escalation calls for today.
+  Future<void> muteToday(String date) => muteUntil(date);
+
+  /// Clears the muted dates so notifications resume immediately.
+  Future<void> unmuteToday() async {
+    await _settingsDoc.set({
+      'mutedUntilDate': null,
+      'mutedDate': null,
+    }, SetOptions(merge: true));
+    dev.log('FirestoreService: muted dates cleared', name: 'FirestoreService');
   }
 
   // ---------------------------------------------------------------------------
@@ -128,19 +271,26 @@ class FirestoreService {
   /// The stream emits an empty list when no batch is active so the UI can
   /// show the "Start a new batch" prompt.
   Stream<List<Batch>> watchActiveBatch() {
-    return _batches
+    final query = _batches
         .where('status', isEqualTo: 'active')
-        .orderBy('createdAt', descending: true)
-        .snapshots()
-        .map((qs) => qs.docs.map(Batch.fromFirestore).toList());
+        .orderBy('createdAt', descending: true);
+    return _watchQueryWithCacheFallback<List<Batch>>(
+      query: query,
+      mapQuery: (qs) => qs.docs.map(Batch.fromFirestore).toList(),
+      hasData: (batches) => batches.isNotEmpty,
+      fallbackValue: const [],
+    );
   }
 
   /// Streams all batches ordered by creation date descending.
   Stream<List<Batch>> watchAllBatches() {
-    return _batches
-        .orderBy('createdAt', descending: true)
-        .snapshots()
-        .map((qs) => qs.docs.map(Batch.fromFirestore).toList());
+    final query = _batches.orderBy('createdAt', descending: true);
+    return _watchQueryWithCacheFallback<List<Batch>>(
+      query: query,
+      mapQuery: (qs) => qs.docs.map(Batch.fromFirestore).toList(),
+      hasData: (batches) => batches.isNotEmpty,
+      fallbackValue: const [],
+    );
   }
 
   /// Creates a new batch document and returns its auto-generated Firestore ID.
@@ -200,17 +350,20 @@ class FirestoreService {
   /// ```
   /// Only completed slots appear in the map; missing keys mean pending/late/missed.
   Stream<Map<String, Rotation>> watchTodayRotations(String dateStr) {
-    return _rotations
-        .where('date', isEqualTo: dateStr)
-        .snapshots()
-        .map((qs) {
-      final map = <String, Rotation>{};
-      for (final doc in qs.docs) {
-        final rotation = Rotation.fromFirestore(doc);
-        map[rotation.slot] = rotation;
-      }
-      return map;
-    });
+    final query = _rotations.where('date', isEqualTo: dateStr);
+    return _watchQueryWithCacheFallback<Map<String, Rotation>>(
+      query: query,
+      mapQuery: (qs) {
+        final map = <String, Rotation>{};
+        for (final doc in qs.docs) {
+          final rotation = Rotation.fromFirestore(doc);
+          map[rotation.slot] = rotation;
+        }
+        return map;
+      },
+      hasData: (map) => map.isNotEmpty,
+      fallbackValue: const {},
+    );
   }
 
   /// Streams all rotation records, optionally filtered by [batchId].
@@ -224,10 +377,13 @@ class FirestoreService {
     if (batchId != null) {
       query = query.where('batchId', isEqualTo: batchId);
     }
-    return query
-        .orderBy('doneAt', descending: true)
-        .snapshots()
-        .map((qs) => qs.docs.map(Rotation.fromFirestore).toList());
+    query = query.orderBy('doneAt', descending: true);
+    return _watchQueryWithCacheFallback<List<Rotation>>(
+      query: query,
+      mapQuery: (qs) => qs.docs.map(Rotation.fromFirestore).toList(),
+      hasData: (list) => list.isNotEmpty,
+      fallbackValue: const [],
+    );
   }
 
   /// Records a rotation for the given [slot] on [date].
@@ -317,16 +473,16 @@ class FirestoreService {
   // ---------------------------------------------------------------------------
 
   Stream<EscalationSettings> watchEscalationSettings() {
-    return _db
-        .collection('settings')
-        .doc('escalation')
-        .snapshots()
-        .map((snap) {
-      if (!snap.exists || snap.data() == null) {
-        return EscalationSettings.defaults();
-      }
-      return EscalationSettings.fromFirestore(snap);
-    });
+    return _watchDocWithCacheFallback<EscalationSettings>(
+      doc: _db.collection('settings').doc('escalation'),
+      fallbackValue: EscalationSettings.defaults(),
+      mapDoc: (snap) {
+        if (!snap.exists || snap.data() == null) {
+          return EscalationSettings.defaults();
+        }
+        return EscalationSettings.fromFirestore(snap);
+      },
+    );
   }
 
   Future<void> saveEscalationSettings(EscalationSettings settings) async {
@@ -337,16 +493,16 @@ class FirestoreService {
   }
 
   Stream<TelegramSettings> watchTelegramSettings() {
-    return _db
-        .collection('settings')
-        .doc('telegram')
-        .snapshots()
-        .map((snap) {
-      if (!snap.exists || snap.data() == null) {
-        return TelegramSettings.empty();
-      }
-      return TelegramSettings.fromFirestore(snap);
-    });
+    return _watchDocWithCacheFallback<TelegramSettings>(
+      doc: _db.collection('settings').doc('telegram'),
+      fallbackValue: TelegramSettings.empty(),
+      mapDoc: (snap) {
+        if (!snap.exists || snap.data() == null) {
+          return TelegramSettings.empty();
+        }
+        return TelegramSettings.fromFirestore(snap);
+      },
+    );
   }
 
   Future<void> saveTelegramChatId(String chatId) async {
@@ -357,9 +513,12 @@ class FirestoreService {
   }
 
   Stream<List<UserProfile>> watchAllUsers() {
-    return _users.snapshots().map(
-          (qs) => qs.docs.map(UserProfile.fromFirestore).toList(),
-        );
+    return _watchQueryWithCacheFallback<List<UserProfile>>(
+      query: _users,
+      mapQuery: (qs) => qs.docs.map(UserProfile.fromFirestore).toList(),
+      hasData: (users) => users.isNotEmpty,
+      fallbackValue: const [],
+    );
   }
 
   Future<void> saveUserPhone({
@@ -376,14 +535,14 @@ class FirestoreService {
   }
 
   Stream<GatewayStatus?> watchGatewayStatus() {
-    return _db
-        .collection('gateway')
-        .doc('status')
-        .snapshots()
-        .map((snap) {
-      if (!snap.exists || snap.data() == null) return null;
-      return GatewayStatus.fromFirestore(snap);
-    });
+    return _watchDocWithCacheFallback<GatewayStatus?>(
+      doc: _db.collection('gateway').doc('status'),
+      fallbackValue: null,
+      mapDoc: (snap) {
+        if (!snap.exists || snap.data() == null) return null;
+        return GatewayStatus.fromFirestore(snap);
+      },
+    );
   }
 
   Future<void> claimGatewayIdentity(String uid) async {
@@ -397,11 +556,15 @@ class FirestoreService {
   }
 
   Stream<List<AuditLogEntry>> watchAuditLogs({int limit = 100}) {
-    return _db
+    final query = _db
         .collection('auditLogs')
         .orderBy('createdAtMs', descending: true)
-        .limit(limit)
-        .snapshots()
-        .map((qs) => qs.docs.map(AuditLogEntry.fromFirestore).toList());
+        .limit(limit);
+    return _watchQueryWithCacheFallback<List<AuditLogEntry>>(
+      query: query,
+      mapQuery: (qs) => qs.docs.map(AuditLogEntry.fromFirestore).toList(),
+      hasData: (logs) => logs.isNotEmpty,
+      fallbackValue: const [],
+    );
   }
 }

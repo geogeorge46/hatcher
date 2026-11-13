@@ -67,7 +67,7 @@ class Rotation {
       slot: data['slot'] as String,
       doneBy: data['doneBy'] as String,
       doneByUid: data['doneByUid'] as String,
-      doneAt: data['doneAt'] as Timestamp,
+      doneAt: (data['doneAt'] as Timestamp?) ?? Timestamp.now(),
       batchId: data['batchId'] as String,
     );
   }

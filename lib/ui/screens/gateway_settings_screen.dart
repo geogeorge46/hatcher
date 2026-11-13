@@ -73,12 +73,21 @@ class _GatewaySettingsScreenState extends ConsumerState<GatewaySettingsScreen> {
     }
   }
 
-  Future<void> _runTestCall() async {
-    final phone = _testPhoneController.text.trim();
+  String _normalizePhone(String raw) {
+    var p = raw.trim().replaceAll(' ', '');
+    if (p.length == 10 && !p.startsWith('+')) {
+      p = '+91$p';
+    }
+    return p;
+  }
+
+  Future<void> _runTestCall([String? targetPhone]) async {
+    final rawPhone = targetPhone ?? _testPhoneController.text.trim();
+    final phone = _normalizePhone(rawPhone);
     if (!isValidE164Phone(phone)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Enter a valid E.164 phone number, e.g. +919876543210'),
+          content: Text('Enter a valid 10-digit or E.164 phone number, e.g. +919876543210'),
           backgroundColor: Colors.red,
         ),
       );
@@ -88,7 +97,7 @@ class _GatewaySettingsScreenState extends ConsumerState<GatewaySettingsScreen> {
       await HatcherChannel.testGatewayCall(phone);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Dialing $phone...')),
+          SnackBar(content: Text('Calling $phone directly from SIM...')),
         );
       }
     } catch (e) {
@@ -100,12 +109,13 @@ class _GatewaySettingsScreenState extends ConsumerState<GatewaySettingsScreen> {
     }
   }
 
-  Future<void> _runTestSms() async {
-    final phone = _testPhoneController.text.trim();
+  Future<void> _runTestSms([String? targetPhone]) async {
+    final rawPhone = targetPhone ?? _testPhoneController.text.trim();
+    final phone = _normalizePhone(rawPhone);
     if (!isValidE164Phone(phone)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Enter a valid E.164 phone number, e.g. +919876543210'),
+          content: Text('Enter a valid 10-digit or E.164 phone number, e.g. +919876543210'),
           backgroundColor: Colors.red,
         ),
       );
@@ -318,6 +328,82 @@ class _GatewaySettingsScreenState extends ConsumerState<GatewaySettingsScreen> {
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 20),
+          const Divider(),
+          const Text(
+            'Family Quick Call & SMS',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Tap call to immediately dial any member\'s phone directly from this gateway phone.',
+            style: TextStyle(fontSize: 12, color: Colors.grey),
+          ),
+          const SizedBox(height: 8),
+          ref.watch(allUsersProvider).when(
+            data: (users) {
+              if (users.isEmpty) {
+                return const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8.0),
+                  child: Text('No family members registered yet.'),
+                );
+              }
+              return Column(
+                children: users.map((u) {
+                  final phone = u.phone;
+                  final hasPhone = phone != null && phone.trim().isNotEmpty;
+                  return Card(
+                    margin: const EdgeInsets.symmetric(vertical: 4),
+                    child: ListTile(
+                      leading: CircleAvatar(
+                        child: Text(u.name.isNotEmpty ? u.name[0].toUpperCase() : '?'),
+                      ),
+                      title: Text(u.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                      subtitle: Text(
+                        hasPhone ? phone : 'No phone set in Escalation Settings',
+                        style: TextStyle(
+                          color: hasPhone ? null : Colors.orange.shade800,
+                          fontSize: 12,
+                        ),
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.call, color: Colors.green),
+                            tooltip: 'Call ${u.name}',
+                            onPressed: hasPhone
+                                ? () => _runTestCall(phone)
+                                : () {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('No phone saved for ${u.name}. Set it in Escalation Settings.'),
+                                      ),
+                                    );
+                                  },
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.sms, color: Colors.blue),
+                            tooltip: 'SMS ${u.name}',
+                            onPressed: hasPhone
+                                ? () => _runTestSms(phone)
+                                : null,
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
+              );
+            },
+            loading: () => const Center(
+              child: Padding(
+                padding: EdgeInsets.all(8.0),
+                child: CircularProgressIndicator(),
+              ),
+            ),
+            error: (e, _) => Text('Could not load family members: $e'),
           ),
         ],
       ),

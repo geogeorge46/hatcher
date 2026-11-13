@@ -63,7 +63,7 @@ class Batch {
       eggCount: (data['eggCount'] as num).toInt(),
       status: data['status'] as String,
       createdBy: data['createdBy'] as String,
-      createdAt: data['createdAt'] as Timestamp,
+      createdAt: (data['createdAt'] as Timestamp?) ?? Timestamp.now(),
     );
   }
 

@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:developer' as dev;
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
@@ -39,10 +41,43 @@ Future<void> main() async {
       cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
     );
 
-    // Register FCM token for Phase 2 push notifications.
+    // Ensure returning users have an active anonymous session for Firestore rules
+    // without blocking app startup if the network is slow or offline.
+    if (LocalPrefs.userName != null &&
+        FirebaseAuth.instance.currentUser == null) {
+      try {
+        await FirebaseAuth.instance
+            .signInAnonymously()
+            .timeout(const Duration(seconds: 5));
+      } catch (e) {
+        dev.log('Anonymous auth startup warning: $e', error: e);
+      }
+    }
+
+    // Register FCM token for Phase 2 push notifications (bounded so slow networks
+    // cannot stall app launch).
     try {
       final messaging = FirebaseMessaging.instance;
-      initialFcmToken = await messaging.getToken();
+
+      // Explicitly request notification permissions (Android 13+ and iOS)
+      try {
+        await messaging.requestPermission(
+          alert: true,
+          announcement: false,
+          badge: true,
+          carPlay: false,
+          criticalAlert: true,
+          provisional: false,
+          sound: true,
+        );
+        await HatcherChannel.requestNotificationPermission();
+      } catch (e) {
+        dev.log('Notification permission request notice: $e');
+      }
+
+      initialFcmToken = await messaging
+          .getToken()
+          .timeout(const Duration(seconds: 4));
       if (initialFcmToken != null) {
         LocalPrefs.fcmToken = initialFcmToken;
       }
@@ -78,12 +113,15 @@ Future<void> main() async {
       dev.log('FCM token registration warning: $e', error: e);
     }
 
-    // Sync existing user identity to native SharedPreferences on launch.
+    // Sync existing user identity and muted date to native SharedPreferences on launch.
     if (LocalPrefs.userName != null || LocalPrefs.userUid != null) {
       await HatcherChannel.syncContext(
         userName: LocalPrefs.userName,
         userUid: LocalPrefs.userUid,
       );
+    }
+    if (LocalPrefs.mutedDate != null) {
+      await HatcherChannel.setMutedDate(LocalPrefs.mutedDate);
     }
 
     dev.log('Firebase initialized successfully.');

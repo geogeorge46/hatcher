@@ -200,6 +200,64 @@ class MainActivity : FlutterActivity() {
                 }
 
                 // ----------------------------------------------------------------
+                // setMutedDate
+                // Silences all alarms and notifications for the specified date
+                // (e.g. when owner is in a function / meeting).
+                // ----------------------------------------------------------------
+                "setMutedDate" -> {
+                    try {
+                        val date = call.argument<String>("date")
+                        val prefs = applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                        val editor = prefs.edit()
+                        if (date.isNullOrBlank()) {
+                            editor.remove("muted_until_date")
+                            editor.remove("muted_date")
+                        } else {
+                            editor.putString("muted_until_date", date)
+                            editor.putString("muted_date", date)
+                        }
+                        editor.apply()
+
+                        if (!date.isNullOrBlank()) {
+                            // Stop currently ringing alarm immediately
+                            sendBroadcast(Intent(com.hatcher.app.alarm.AlarmService.ACTION_STOP_ALARM).apply {
+                                setPackage(packageName)
+                            })
+                            // Dismiss active alarm and escalation notifications
+                            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                            nm.cancel(com.hatcher.app.alarm.AlarmService.FOREGROUND_NOTIFICATION_ID)
+                            nm.cancel(com.hatcher.app.alarm.AlarmService.FOREGROUND_NOTIFICATION_ID + 1)
+                            nm.cancel(3001) // FCM escalation notice
+                        }
+                        result.success(null)
+                    } catch (e: Exception) {
+                        result.error("SET_MUTED_ERROR", e.message, null)
+                    }
+                }
+
+                // ----------------------------------------------------------------
+                // requestNotificationPermission (Android 13+ API 33)
+                // ----------------------------------------------------------------
+                "requestNotificationPermission" -> {
+                    try {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                                != PackageManager.PERMISSION_GRANTED
+                            ) {
+                                ActivityCompat.requestPermissions(
+                                    this,
+                                    arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                                    1001
+                                )
+                            }
+                        }
+                        result.success(null)
+                    } catch (e: Exception) {
+                        result.error("REQ_NOTIF_ERROR", e.message, null)
+                    }
+                }
+
+                // ----------------------------------------------------------------
                 // Phase 2: Gateway Mode Methods
                 // ----------------------------------------------------------------
                 "startGatewayService" -> {
@@ -539,16 +597,29 @@ class MainActivity : FlutterActivity() {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val simSlot = prefs.getInt("gateway_sim_slot", 0)
         val extras = Bundle()
+        var chosen: android.telecom.PhoneAccountHandle? = null
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE)
             == PackageManager.PERMISSION_GRANTED
         ) {
             val accounts = telecom.callCapablePhoneAccounts
-            val chosen = accounts.getOrNull(simSlot) ?: accounts.firstOrNull()
+            chosen = accounts.getOrNull(simSlot) ?: accounts.firstOrNull()
             if (chosen != null) {
                 extras.putParcelable(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, chosen)
             }
         }
-        telecom.placeCall(Uri.fromParts("tel", phone, null), extras)
+        val uri = Uri.fromParts("tel", phone, null)
+        try {
+            telecom.placeCall(uri, extras)
+        } catch (te: Exception) {
+            android.util.Log.w("MainActivity", "telecom.placeCall failed, using Intent.ACTION_CALL: ${te.message}")
+            val callIntent = Intent(Intent.ACTION_CALL, uri).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                if (chosen != null) {
+                    putExtra(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, chosen)
+                }
+            }
+            startActivity(callIntent)
+        }
     }
 
     @Suppress("MissingPermission", "DEPRECATION")

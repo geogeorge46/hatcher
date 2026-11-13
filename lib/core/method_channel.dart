@@ -231,6 +231,33 @@ class HatcherChannel {
     }
   }
 
+  /// Sets or clears the muted date ('yyyy-MM-dd') in native Android prefs.
+  /// When set to today's date, native AlarmReceiver and AlarmService suppress
+  /// all alarms and notifications, and dismiss any currently ringing alarm.
+  static Future<void> setMutedDate(String? date) async {
+    try {
+      await _channel.invokeMethod<void>('setMutedDate', {'date': date ?? ''});
+      dev.log('HatcherChannel: setMutedDate date=$date', name: 'HatcherChannel');
+    } on PlatformException catch (e) {
+      dev.log(
+        'HatcherChannel: setMutedDate failed – code=${e.code} message=${e.message}',
+        name: 'HatcherChannel',
+      );
+    }
+  }
+
+  /// Requests the POST_NOTIFICATIONS runtime permission on Android 13+ (API 33+).
+  static Future<void> requestNotificationPermission() async {
+    try {
+      await _channel.invokeMethod<void>('requestNotificationPermission');
+    } on PlatformException catch (e) {
+      dev.log(
+        'HatcherChannel: requestNotificationPermission failed – code=${e.code} message=${e.message}',
+        name: 'HatcherChannel',
+      );
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Phase 2: Gateway Mode & Telecom / SMS
   // ---------------------------------------------------------------------------

@@ -170,6 +170,15 @@ class AlarmService : Service() {
 
         Log.i(TAG, "onStartCommand: slotKey=$slotKey date=$date repeat=${repeatMinutes}min")
 
+        // ---- Guard: If today is muted by user, stop immediately ----
+        val prefs = getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
+        val mutedUntil = prefs.getString("muted_until_date", null) ?: prefs.getString("muted_date", null)
+        if (!mutedUntil.isNullOrBlank() && date <= mutedUntil) {
+            Log.i(TAG, "AlarmService: Date ($date) is muted until $mutedUntil — stopping immediately")
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
         // ---- Start foreground IMMEDIATELY ----
         // We build a placeholder "in progress" notification. The real alarm
         // notification (with actions) is posted by ringAlarm() shortly after.
@@ -249,6 +258,12 @@ class AlarmService : Service() {
     private suspend fun checkSlotDone(date: String, slot: String): Boolean {
         // ---- Tier 1: Local SharedPreferences ----
         val prefs = getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
+        val mutedUntil = prefs.getString("muted_until_date", null) ?: prefs.getString("muted_date", null)
+        if (!mutedUntil.isNullOrBlank() && date <= mutedUntil) {
+            Log.d(TAG, "Slot suppressed: date ($date) is muted until $mutedUntil")
+            return true
+        }
+
         if (prefs.getBoolean("done_${date}_${slot}", false)) {
             Log.d(TAG, "Slot done (local): $date $slot")
             return true
@@ -342,10 +357,12 @@ class AlarmService : Service() {
 
         when (state) {
             PhoneState.SCREEN_ON_UNLOCKED -> {
-                // Show heads-up banner. Play only a brief, gentle notification beep
-                // since the user is actively looking at the phone.
+                // Show heads-up banner and play alarm audio on STREAM_ALARM
+                // so it rings audibly even when phone is in silent/vibrate mode!
                 showHeadsUpNotification()
-                startAlarmAudio(gentleBeepOnly = true)
+                startAlarmAudio(gentleBeepOnly = false)
+                startVibration()
+                serviceScope.launch { startVolumeRamp(gentle = true) }
             }
             PhoneState.LOCKED, PhoneState.OFF -> {
                 // Full-screen alarm: launch AlarmActivity AND show the ongoing
@@ -446,20 +463,20 @@ class AlarmService : Service() {
             originalAlarmVolume = am.getStreamVolume(AudioManager.STREAM_ALARM)
         }
 
-        val targetPercent = if (gentle) 50 else 100
-        val startVolume = (maxAlarmVolume * 0.20).toInt().coerceAtLeast(1)
-        val targetVolume = (maxAlarmVolume * targetPercent / 100.0).toInt().coerceAtLeast(1)
+        val targetPercent = if (gentle) 80 else 100
+        val startVolume = (maxAlarmVolume * 0.70).toInt().coerceAtLeast(2)
+        val targetVolume = (maxAlarmVolume * targetPercent / 100.0).toInt().coerceAtLeast(startVolume)
 
-        // Set initial volume
+        // Set initial volume immediately to an audible level so it breaks through silent mode
         am.setStreamVolume(AudioManager.STREAM_ALARM, startVolume, 0)
         volumeRampActive = true
 
         var currentVolume = startVolume
-        // Each step adds ~10% of max volume; delay 10 seconds between steps
-        val stepSize = (maxAlarmVolume * 0.10).toInt().coerceAtLeast(1)
+        // Each step adds volume; delay 5 seconds between steps
+        val stepSize = (maxAlarmVolume * 0.15).toInt().coerceAtLeast(1)
 
         while (volumeRampActive && currentVolume < targetVolume) {
-            delay(10_000L) // 10-second interval between volume steps
+            delay(5_000L) // 5-second interval between volume steps
             if (!volumeRampActive) break
             currentVolume = (currentVolume + stepSize).coerceAtMost(targetVolume)
             am.setStreamVolume(AudioManager.STREAM_ALARM, currentVolume, 0)
@@ -519,11 +536,18 @@ class AlarmService : Service() {
     private fun startAlarmAudio(gentleBeepOnly: Boolean) {
         stopAlarmAudio()
         try {
-            val uri = if (gentleBeepOnly) {
-                RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-            } else {
+            // Always use system ALARM stream and sound so it penetrates Silent/Vibrate mode!
+            val uri = run {
                 val resId = resources.getIdentifier("alarm_sound", "raw", packageName)
+                var validRaw = false
                 if (resId != 0) {
+                    try {
+                        resources.openRawResourceFd(resId)?.use { afd ->
+                            if (afd.length > 100) validRaw = true
+                        }
+                    } catch (_: Exception) {}
+                }
+                if (validRaw) {
                     android.net.Uri.parse("android.resource://$packageName/$resId")
                 } else {
                     RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
@@ -532,14 +556,16 @@ class AlarmService : Service() {
             }
 
             val attrs = AudioAttributes.Builder()
-                .setUsage(if (gentleBeepOnly) AudioAttributes.USAGE_NOTIFICATION else AudioAttributes.USAGE_ALARM)
+                .setUsage(AudioAttributes.USAGE_ALARM)
                 .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                 .build()
 
             val player = MediaPlayer().apply {
                 setAudioAttributes(attrs)
+                @Suppress("DEPRECATION")
+                setAudioStreamType(AudioManager.STREAM_ALARM)
                 setDataSource(this@AlarmService, uri)
-                isLooping = !gentleBeepOnly
+                isLooping = true
                 prepare()
                 start()
             }
@@ -548,6 +574,7 @@ class AlarmService : Service() {
             Log.e(TAG, "Custom/primary alarm audio failed, trying system default fallback", e)
             try {
                 val fallbackUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                    ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
                     ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
                 val player = MediaPlayer().apply {
                     setAudioAttributes(
@@ -556,8 +583,10 @@ class AlarmService : Service() {
                             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                             .build()
                     )
+                    @Suppress("DEPRECATION")
+                    setAudioStreamType(AudioManager.STREAM_ALARM)
                     setDataSource(this@AlarmService, fallbackUri)
-                    isLooping = !gentleBeepOnly
+                    isLooping = true
                     prepare()
                     start()
                 }

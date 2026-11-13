@@ -37,6 +37,8 @@ class LocalPrefs {
   static const _kUserName = 'userName';
   static const _kUserUid = 'userUid';
   static const _kFcmToken = 'fcmToken';
+  static const _kMutedDate = 'mutedDate';
+  static const _kMutedUntilDate = 'mutedUntilDate';
 
   /// Prefix for per-day, per-slot done flags.
   /// Full key: `'done_{date}_{slot}'` e.g. `'done_2025-06-01_morning'`
@@ -134,6 +136,30 @@ class LocalPrefs {
       _p.setString(_kFcmToken, token);
     }
   }
+
+  // ---------------------------------------------------------------------------
+  // Muted date for Quiet Mode (e.g. user in a function / event)
+  // ---------------------------------------------------------------------------
+
+  /// The 'yyyy-MM-dd' date up to which alarms and notifications are completely
+  /// silenced (e.g. user in a function / event for 1 or more days).
+  static String? get mutedUntilDate =>
+      _p.getString(_kMutedUntilDate) ?? _p.getString(_kMutedDate);
+
+  /// Persists or clears the muted date.
+  static set mutedUntilDate(String? date) {
+    if (date == null || date.isEmpty) {
+      _p.remove(_kMutedUntilDate);
+      _p.remove(_kMutedDate);
+    } else {
+      _p.setString(_kMutedUntilDate, date);
+      _p.setString(_kMutedDate, date);
+    }
+  }
+
+  /// Legacy single-day accessor
+  static String? get mutedDate => mutedUntilDate;
+  static set mutedDate(String? date) => mutedUntilDate = date;
 
   // ---------------------------------------------------------------------------
   // Per-day slot done flags

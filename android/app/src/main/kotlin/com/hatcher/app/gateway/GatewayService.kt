@@ -233,7 +233,18 @@ class GatewayService : Service() {
         val targetUid = claimedData["targetUid"] as? String ?: ""
         val targetName = claimedData["targetName"] as? String ?: "Unknown"
 
-        // 2. Re-check if the slot is STILL not done before placing call/SMS
+        // 2. Re-check if the slot is STILL not done or muted before placing call/SMS
+        val mutedUntil = prefs.getString("muted_until_date", null) ?: prefs.getString("muted_date", null)
+        if (!mutedUntil.isNullOrBlank() && date <= mutedUntil) {
+            cmdRef.update(mapOf(
+                "status" to "cancelled",
+                "reason" to "Notifications and calls muted until $mutedUntil by owner",
+                "completedAt" to Timestamp.now()
+            )).await()
+            writeAuditLog(date, slotKey, type, targetName, "cancelled: muted until $mutedUntil by owner")
+            return
+        }
+
         if (date.isNotBlank() && slotKey.isNotBlank()) {
             try {
                 val rotSnap = db.collection("rotations").document("${date}_${slotKey}").get().await()
@@ -298,8 +309,20 @@ class GatewayService : Service() {
                 extras.putParcelable(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, chosenAccount)
             }
 
-            telecom.placeCall(uri, extras)
-            Log.i(TAG, "Placed call to $targetName ($phone)")
+            try {
+                telecom.placeCall(uri, extras)
+                Log.i(TAG, "Placed call via telecom to $targetName ($phone)")
+            } catch (te: Exception) {
+                Log.w(TAG, "telecom.placeCall failed, using Intent.ACTION_CALL fallback: ${te.message}")
+                val callIntent = Intent(Intent.ACTION_CALL, uri).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    if (chosenAccount != null) {
+                        putExtra(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, chosenAccount)
+                    }
+                }
+                startActivity(callIntent)
+                Log.i(TAG, "Placed call via ACTION_CALL to $targetName ($phone)")
+            }
 
             // Monitor TelephonyManager call state for up to 40 seconds
             val telephony = getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager

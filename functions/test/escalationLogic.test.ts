@@ -304,4 +304,24 @@ describe('escalationLogic timeline simulations', () => {
     assert.equal(out.plans.length, 1);
     assert.equal(out.plans[0].commands.length, 2);
   });
+
+  it('10. Mute today: if mutedDate equals today (e.g. user in a function), no escalations fire', () => {
+    const t20 = istDateTimeToMs(DATE, '08:50');
+    const out = evaluateEscalationTick(
+      baseInput(t20, {
+        mutedDate: DATE,
+      })
+    );
+    assert.equal(out.plans.length, 0);
+  });
+
+  it('11. Mute multi-day: if mutedUntilDate covers today, no escalations fire', () => {
+    const t20 = istDateTimeToMs(DATE, '08:50');
+    const out = evaluateEscalationTick(
+      baseInput(t20, {
+        mutedUntilDate: '2026-11-20', // future date
+      })
+    );
+    assert.equal(out.plans.length, 0);
+  });
 });

@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/constants.dart';
 import '../../core/extensions.dart';
+import '../../core/method_channel.dart';
 import '../../data/models/batch.dart';
 import '../../data/models/rotation.dart';
 import '../../data/models/settings_model.dart';
@@ -18,6 +19,7 @@ import '../theme/app_theme.dart';
 import '../widgets/day_banner.dart';
 import '../widgets/gateway_status_chip.dart';
 import '../widgets/lockdown_banner.dart';
+import '../widgets/mute_today_banner.dart';
 import '../widgets/permission_warning_bar.dart';
 import '../widgets/slot_card.dart';
 
@@ -107,6 +109,8 @@ class _ActiveBatchBody extends ConsumerWidget {
   final Batch batch;
   final AppLocalizations l10n;
 
+  static String? _lastScheduledKey;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final day = ref.watch(dayCounterProvider);
@@ -115,6 +119,24 @@ class _ActiveBatchBody extends ConsumerWidget {
     final permsOk = ref.watch(hasAllPermissionsProvider);
     final rotationsAsync = ref.watch(todayRotationsProvider);
     final settingsAsync = ref.watch(settingsProvider);
+    final settings = settingsAsync.value ?? SettingsModel.defaults();
+
+    // Auto-schedule native alarms whenever an active batch is detected
+    // (guarantees all family phones receive alarms even on updates or joining)
+    if (!isLockdown) {
+      final scheduleKey = '${batch.id}_${batch.placedDate}_${settings.slots}_${settings.stopRemindersFromDay}_${nowKolkata().kolkataDate()}';
+      if (_lastScheduledKey != scheduleKey) {
+        _lastScheduledKey = scheduleKey;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          HatcherChannel.scheduleAlarms(
+            placedDate: batch.placedDate,
+            slots: settings.slots,
+            stopFromDay: settings.stopRemindersFromDay,
+            candlingDays: settings.candlingDays,
+          );
+        });
+      }
+    }
 
     return RefreshIndicator(
       onRefresh: () async {
@@ -128,6 +150,9 @@ class _ActiveBatchBody extends ConsumerWidget {
             DayBanner(day: day, hatchDate: hatchDate)
           else
             const SizedBox(height: 8),
+
+          // ── Mute for Today (Quiet Mode) ──────────────────────────────────
+          const MuteTodayBanner(),
 
           // ── Phase 2: Gateway Status Chip ─────────────────────────────────
           const Align(
@@ -149,7 +174,6 @@ class _ActiveBatchBody extends ConsumerWidget {
             ),
             error: (e, _) => _ErrorBody(message: e.toString()),
             data: (rotations) {
-              final settings = settingsAsync.value ?? SettingsModel.defaults();
               final now = nowKolkata();
 
               final morningTime = settings.slots[kSlotMorning] ?? '08:30';

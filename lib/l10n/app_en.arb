@@ -78,5 +78,13 @@
   "humidity": "From day {day}: raise humidity 💧",
   "@humidity": {
     "placeholders": { "day": { "type": "int" } }
-  }
+  },
+  "muteToday": "Stop notifications for today",
+  "muteTodaySubtitle": "Silence all alarms and escalation calls for today while in a function",
+  "mutedTodayBanner": "Notifications stopped for today",
+  "mutedTodayAutoResume": "Alarms will automatically resume tomorrow",
+  "btnResumeNotifications": "Resume",
+  "muteConfirmTitle": "Stop notifications for today?",
+  "muteConfirmMessage": "All remaining alarms, notifications, and calls will be silenced for today. Normal schedule resumes automatically tomorrow.",
+  "notificationsResumed": "Notifications resumed for today"
 }

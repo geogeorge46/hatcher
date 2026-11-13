@@ -12,6 +12,7 @@ import '../../data/local_prefs.dart';
 import '../../data/models/settings_model.dart';
 import '../../providers/batch_provider.dart';
 import '../../providers/settings_provider.dart';
+import '../widgets/mute_today_banner.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -131,12 +132,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         kSlotEvening: _formatTimeOfDay(_eveningTime),
       };
 
+      final currentSettings = ref.read(settingsProvider).value;
       final updated = SettingsModel(
         slots: slots,
         stopRemindersFromDay: stopDay,
         candlingDays: kDefaultCandlingDays,
         snoozeMinutes: snooze,
         repeatMinutes: repeat,
+        mutedDate: currentSettings?.mutedDate,
       );
 
       // 1. Save to Firestore
@@ -331,6 +334,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
           ),
           const Divider(height: 24),
+
+          // ---- Stop notifications for today (Quiet Mode) ------------------
+          const MuteTodayBanner(),
+          const SizedBox(height: 12),
 
           // ---- Phase 2: Escalation, Telegram, Phones & Gateway ------------
           const _SectionHeader(label: 'Phase 2: Escalation & Gateway'),

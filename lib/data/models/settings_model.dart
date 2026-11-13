@@ -46,13 +46,31 @@ class SettingsModel {
   /// has passed without a rotation being logged.
   final int repeatMinutes;
 
+  /// Optional 'yyyy-MM-dd' string. When set, all alarms, notifications,
+  /// and escalation calls are completely silenced up to and including this date
+  /// (e.g. when owner is in a function/event for 1 day, 2 days, or more).
+  /// Resets automatically once the date passes.
+  final String? mutedUntilDate;
+
+  /// Legacy alias for single-day muting.
+  final String? mutedDate;
+
   const SettingsModel({
     required this.slots,
     required this.stopRemindersFromDay,
     required this.candlingDays,
     required this.snoozeMinutes,
     required this.repeatMinutes,
+    this.mutedUntilDate,
+    this.mutedDate,
   });
+
+  /// Returns true if notifications/alarms are muted for [dateStr] ('yyyy-MM-dd').
+  bool isMutedForDate(String dateStr) {
+    final target = mutedUntilDate ?? mutedDate;
+    if (target == null || target.isEmpty) return false;
+    return dateStr.compareTo(target) <= 0;
+  }
 
   // ---------------------------------------------------------------------------
   // Default factory
@@ -72,6 +90,8 @@ class SettingsModel {
         candlingDays: List<int>.from(kDefaultCandlingDays),
         snoozeMinutes: kDefaultSnoozeMinutes,
         repeatMinutes: kDefaultRepeatMinutes,
+        mutedUntilDate: null,
+        mutedDate: null,
       );
 
   // ---------------------------------------------------------------------------
@@ -115,6 +135,8 @@ class SettingsModel {
           (data['snoozeMinutes'] as num?)?.toInt() ?? defaults.snoozeMinutes,
       repeatMinutes:
           (data['repeatMinutes'] as num?)?.toInt() ?? defaults.repeatMinutes,
+      mutedUntilDate: (data['mutedUntilDate'] ?? data['mutedDate']) as String?,
+      mutedDate: data['mutedDate'] as String?,
     );
   }
 
@@ -125,6 +147,8 @@ class SettingsModel {
         'candlingDays': List<int>.from(candlingDays),
         'snoozeMinutes': snoozeMinutes,
         'repeatMinutes': repeatMinutes,
+        'mutedUntilDate': mutedUntilDate,
+        'mutedDate': mutedDate,
       };
 
   // ---------------------------------------------------------------------------
@@ -138,7 +162,20 @@ class SettingsModel {
     List<int>? candlingDays,
     int? snoozeMinutes,
     int? repeatMinutes,
+    Object? mutedUntilDate = _sentinel,
+    Object? mutedDate = _sentinel,
   }) {
+    final resolvedMutedUntil = identical(mutedUntilDate, _sentinel)
+        ? (identical(mutedDate, _sentinel)
+            ? this.mutedUntilDate
+            : (mutedDate as String?))
+        : (mutedUntilDate as String?);
+    final resolvedMutedDate = identical(mutedDate, _sentinel)
+        ? (identical(mutedUntilDate, _sentinel)
+            ? this.mutedDate
+            : (mutedUntilDate as String?))
+        : (mutedDate as String?);
+
     return SettingsModel(
       slots: slots ?? Map<String, String>.from(this.slots),
       stopRemindersFromDay:
@@ -147,11 +184,16 @@ class SettingsModel {
           candlingDays ?? List<int>.from(this.candlingDays),
       snoozeMinutes: snoozeMinutes ?? this.snoozeMinutes,
       repeatMinutes: repeatMinutes ?? this.repeatMinutes,
+      mutedUntilDate: resolvedMutedUntil,
+      mutedDate: resolvedMutedDate,
     );
   }
+
+  static const Object _sentinel = Object();
 
   @override
   String toString() =>
       'SettingsModel(slots=$slots, stopFromDay=$stopRemindersFromDay, '
-      'candling=$candlingDays, snooze=$snoozeMinutes, repeat=$repeatMinutes)';
+      'candling=$candlingDays, snooze=$snoozeMinutes, repeat=$repeatMinutes, '
+      'mutedUntilDate=$mutedUntilDate, mutedDate=$mutedDate)';
 }

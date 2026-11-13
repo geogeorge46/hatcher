@@ -61,13 +61,13 @@ object NotificationHelper {
                 .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                 .setUsage(AudioAttributes.USAGE_ALARM)
                 .build()
-            setSound(null, audioAttributes) // Sound played manually via MediaPlayer on STREAM_ALARM
+            val defaultAlarmUri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_ALARM)
+                ?: android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_RINGTONE)
+            setSound(defaultAlarmUri, audioAttributes)
 
-            // Bypass DND if permission is granted
+            // Bypass DND
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                if (notificationManager.isNotificationPolicyAccessGranted) {
-                    setBypassDnd(true)
-                }
+                setBypassDnd(true)
             }
         }
         notificationManager.createNotificationChannel(alarmChannel)

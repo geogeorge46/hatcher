@@ -83,6 +83,10 @@ export interface TickInput {
   config: EscalationConfig;
   users: FamilyMember[];
   gateway: GatewayState | null;
+  /** Optional 'yyyy-MM-dd' date string. If today's date matches, all escalations are silenced for today. */
+  mutedDate?: string | null;
+  /** Optional 'yyyy-MM-dd' date string. If today's date is on or before this date, all escalations are silenced. */
+  mutedUntilDate?: string | null;
 }
 
 export type PlannedCommand =
@@ -272,6 +276,19 @@ export function evaluateEscalationTick(input: TickInput): TickOutput {
   }
 
   const { dateStr: todayDateStr } = toIstParts(input.nowMs);
+
+  // Muted for today or multiple days (e.g. owner in a function / meeting): no escalation!
+  const effectiveMutedUntil = input.mutedUntilDate ?? input.mutedDate;
+  if (effectiveMutedUntil && todayDateStr <= effectiveMutedUntil) {
+    return {
+      isLockdown,
+      incubationDay,
+      gatewayOnline,
+      shouldSendGatewayOfflineWarning: false,
+      plans: [],
+    };
+  }
+
   const slotKeys: SlotKey[] = ['morning', 'noon', 'evening'];
   const plans: StepPlan[] = [];
 

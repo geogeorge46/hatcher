@@ -120,8 +120,13 @@ class HatcherFirebaseMessagingService : FirebaseMessagingService() {
         val symbol = data["symbol"] ?: NotificationHelper.getSlotSymbol(slotKey)
         val text = data["text"] ?: "മുട്ട തിരിക്കാൻ സമയമായി – ഇപ്പോൾ $symbol വെക്കണം"
 
-        // Do not show if slot is already marked done locally
+        // Do not show if slot is already marked done locally or muted
         val prefs = getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
+        val mutedUntil = prefs.getString("muted_until_date", null) ?: prefs.getString("muted_date", null)
+        if (!mutedUntil.isNullOrBlank() && date <= mutedUntil) {
+            Log.i(TAG, "Push escalation notice muted for $date (muted until $mutedUntil)")
+            return
+        }
         if (prefs.getBoolean("done_${date}_${slotKey}", false)) {
             return
         }
